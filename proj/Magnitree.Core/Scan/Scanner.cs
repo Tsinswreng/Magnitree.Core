@@ -6,19 +6,27 @@ using System.IO;
 using Node = ITreeNode<Magnitree.Core.Path.IPathInfo>;
 
 public class EvtArgScanProgress: EventArgs{
-	public str? Path{get;set;}
+	//public str? Path{get;set;}
+	public Node? TreeNode{get;set;}
+	public u64 Depth{get;set;}
 }
 
 public class TraverseInfo{
 	public u64 Depth{get;set;} = 0;
-	public bool IsVisited{get;set;} = false;
 	[Obsolete]
 	public Node? FirstUnvisitedChild{get;set;}
 	public u64 FirstUnvisitedChildIdx{get;set;} = 0;
 }
 
 public class Scanner{
-	public event EventHandler<EvtArgScanProgress>? OnScan;
+	/// <summary>
+	/// ʃ入ʹ參ˋ循環中當前遍歷ʹ節點。緣遍歷旹有回溯、節點蜮褈
+	/// </summary>
+	public event EventHandler<EvtArgScanProgress>? OnScanCurrentNode;
+	/// <summary>
+	/// ʃ入ʹ參ˋ已算好大小之節點。節點不褈
+	/// </summary>
+	public event EventHandler<EvtArgScanProgress>? OnScanCompletedNode;
 	public Node Tree{get;set;} = new TreeNode<IPathInfo>();
 
 	public IPath StartPath{get;set;}
@@ -56,21 +64,53 @@ public class Scanner{
 		return R;
 	}
 
+	void _OnScanCompletedNode(Node Node, TraverseInfo CurTraverseInfo){
+		OnScanCompletedNode?.Invoke(
+			this
+			,new EvtArgScanProgress{
+				TreeNode = Node,
+				Depth = CurTraverseInfo.Depth
+			}
+		);
+	}
+
+	void _OnScanCurrentNode(Node Node, TraverseInfo CurTraverseInfo){
+		OnScanCurrentNode?.Invoke(
+			this
+			,new EvtArgScanProgress{
+				TreeNode = Node,
+				Depth = CurTraverseInfo.Depth
+			}
+		);
+	}
+
 	public void Scan(){
 		var CurNode = MkNode(new PathInfo(StartPath.AbsPosixPath));
 		var Cur = CurNode;
 		for(;;){
 			var CurTraverseInfo = GetTraverseInfo(Cur);
-			CurTraverseInfo.IsVisited = true;
+			//CurTraverseInfo.IsVisited = true;
 			//設 當前ʹ節ʹ深度潙父節ʹ深度 +1
 			if(Cur.Parent != null){
 				var ParentTraverseInfo = GetTraverseInfo(Cur.Parent);
 				CurTraverseInfo.Depth = ParentTraverseInfo.Depth + 1;
 			}
 			
-			if(Cur.Data.HasSizeBytes && Cur.Parent != null){
-				Cur.Parent.Data.SizeBytes += Cur.Data.SizeBytes;
+			_OnScanCurrentNode(Cur, CurTraverseInfo);
+			
+			if(Cur.Data.HasSizeBytes){
+				if(Cur.Parent != null){
+					Cur.Parent.Data.SizeBytes += Cur.Data.SizeBytes;
+				}
 			}
+
+			if(Cur.Data.Type == EPathType.File){//當前ʹ節潙葉節(文件)
+				_OnScanCompletedNode(Cur, CurTraverseInfo);
+				Cur = Cur.Parent;
+				if(Cur == null){break;}
+				continue;
+			}
+			
 			//當前節點潙文件夾且未初始化ᵣ諸孩
 			if(Cur.Data.Type == EPathType.Dir && Cur.Children.Count == 0){
 				var Children = ToolPath.LsFullPath(Cur.Data.AbsPosixPath);
@@ -85,10 +125,11 @@ public class Scanner{
 				if(fileIdx == 0){//空文件夾
 					Cur.Data.SizeBytes = 0;
 					Cur.Data.HasSizeBytes = true;
+					_OnScanCompletedNode(Cur, CurTraverseInfo);
 					Cur = Cur.Parent;
 					if(Cur == null){break;}
 					continue;
-				}else{
+				}else{//非空文件夾
 					Cur = GetFirstUnvisitedChild(Cur);
 					CurTraverseInfo.FirstUnvisitedChildIdx++;
 					if(Cur == null){break;}
@@ -99,6 +140,7 @@ public class Scanner{
 				CurTraverseInfo.FirstUnvisitedChildIdx++;
 				if(UnvisitedChild == null){//即該文件夾ʹ䀬ʹ孩ˋ皆已遍歷過
 					Cur.Data.HasSizeBytes = true;
+					_OnScanCompletedNode(Cur, CurTraverseInfo);
 					Cur = Cur.Parent;
 					if(Cur == null){break;}
 				}else{
