@@ -108,8 +108,6 @@ public class Scanner{
 		}
 
 		try{
-			var IsContinue = false;
-			var IsBreak = false;
 			for(;;i++){
 				if(Cur == null){
 					break;
@@ -168,19 +166,12 @@ public class Scanner{
 						continue;
 					}
 				}
-
-				Continue:if(IsContinue){
-					IsContinue = false;
-					continue;
-				}
-				Break:if(IsBreak){
-					break;
-				}
 			}//~for(;;)
 		}//~try
-		catch (System.Exception e){ //TODO debug
+		catch (System.Exception){ //TODO debug
 			System.Console.WriteLine("loop counter:");
 			System.Console.WriteLine(i);
+
 			throw;
 		}
 		return NIL;
