@@ -8,20 +8,21 @@ public class Sorter{
 
 	public Scanner Scanner{get;set;}//TODO
 
-
-	public void EventHandler(obj? Sender, EvtArgScanProgress e){
+	public IList<Node> ResultNodes{get;set;} = new List<Node>();
+	public void OnScanCompletedNode(obj? Sender, EvtArgScanProgress e){
 		Task.Run(()=>{
-			
+			if(e.TreeNode!= null){
+				ResultNodes.Add(e.TreeNode);
+			}
 		});
 	}
 
 	public nil Init(){
-		Scanner.OnScanCompletedNode += EventHandler;
+		Scanner.OnScanCompletedNode += OnScanCompletedNode;
 		return NIL;
 	}
 
-
 	public void Sort(){
-		
+
 	}
 }

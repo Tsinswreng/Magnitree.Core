@@ -4,42 +4,60 @@ using Tsinswreng.Tempus;
 using System.IO;
 
 public class PathInfo: IPathInfo{
-	public bool HasSizeBytes{get;set;}
-	public u64 SizeBytes{get;set;}
-	public Tempus CreatedAt{get;}
-	public Tempus ModifiedAt{get;}
-	public str AbsPosixPath{get;}
-	public EPathType Type{get;}
+	public bool HasBytesSize{get;set;}
+	public u64 BytesSize{get;set;}
 
-	public PathInfo(string path){
+	public bool HasBytesSizeOnDisk{get;set;}
+	public u64 BytesSizeOnDisk{get;set;}
+	public Tempus CreatedAt{get;set;}
+	public Tempus ModifiedAt{get;set;}
+	public str AbsPosixPath{get;set;}
+	public EPathType Type{get;set;}
+
+	public override bool Equals(object? obj) {
+		if(obj is not IPathInfo other){
+			return false;
+		}
+		return this.AbsPosixPath == other.AbsPosixPath;
+	}
+
+	public override int GetHashCode() {
+		return this.AbsPosixPath.GetHashCode();
+	}
+
+	// public PathInfo(string path){
+
+	// }
+
+	public static async Task<PathInfo> MkAsy(str path, CT Ct){
+		var R = new PathInfo();
 		FileSystemInfo info;
-
 		if(File.Exists(path)){
 			info = new FileInfo(path);
-			AbsPosixPath = ToolPath.ToUnixPath(path, false);
+			R.AbsPosixPath = ToolPath.ToUnixPath(path, false);
 		}else if(Directory.Exists(path)){
 			info = new DirectoryInfo(path);
-			AbsPosixPath = ToolPath.ToUnixPath(path, true);
+			R.AbsPosixPath = ToolPath.ToUnixPath(path, true);
 		}else{
 			throw new FileNotFoundException($"Path not found: {path}");
 		}
 
 		info.Refresh();
-		
+
 		TryGetPathType(path, out var t);
-		Type = t;
+		R.Type = t;
 
 		if (info is FileInfo fi){
-			HasSizeBytes = true;
-			SizeBytes = (u64)fi.Length;
-			CreatedAt = Tempus.FromDateTime(fi.CreationTimeUtc);
-			ModifiedAt = Tempus.FromDateTime(fi.LastWriteTimeUtc);
+			R.HasBytesSize = true;
+			R.BytesSize = (u64)fi.Length;
+			R.CreatedAt = Tempus.FromDateTime(fi.CreationTimeUtc);
+			R.ModifiedAt = Tempus.FromDateTime(fi.LastWriteTimeUtc);
 		}
 		else if (info is DirectoryInfo di){
-			HasSizeBytes = false;
-			SizeBytes = 0; // 目录大小可自定义统计
-			CreatedAt = Tempus.FromDateTime(di.CreationTimeUtc);
-			ModifiedAt = Tempus.FromDateTime(di.LastWriteTimeUtc);
+			R.HasBytesSize = false;
+			R.BytesSize = 0; // 目录大小可自定义统计
+			R.CreatedAt = Tempus.FromDateTime(di.CreationTimeUtc);
+			R.ModifiedAt = Tempus.FromDateTime(di.LastWriteTimeUtc);
 		}
 		else{
 			throw new NotSupportedException($"Unsupported path type: {path}");
@@ -48,11 +66,8 @@ public class PathInfo: IPathInfo{
 			// CreatedAt = new Tempus();
 			// ModifiedAt = new Tempus();
 		}
+		return R;
 	}
-
-
-	
-
 
 	public static bool TryGetPathType(string path, out EPathType R){
 		R = default;
@@ -116,13 +131,37 @@ public class PathInfo: IPathInfo{
 	// }
 
 
+	public static string ToHumanSize(u64 bytes){
+		const double KB = 1024;
+		const double MB = KB * 1024;
+		const double GB = MB * 1024;
+		if (bytes >= GB){
+			return $"{bytes / GB:F2}G".TrimEnd('0').TrimEnd('.');
+		}
+		if (bytes >= MB){
+			return $"{bytes / MB:F2}M".TrimEnd('0').TrimEnd('.');
+		}
+		if (bytes >= KB){
+			return $"{bytes / KB:F2}K".TrimEnd('0').TrimEnd('.');
+		}
+		return $"{bytes}B";
+	}
+
 }
 
 
 public static class ExtnPath{
 	public static bool IsDir(this IPathInfo z){
-		return z.Type == EPathType.Dir 
-		|| z.Type == EPathType.DirSymlink 
+		return z.Type == EPathType.Dir
+		|| z.Type == EPathType.DirSymlink
 		|| z.Type == EPathType.DirJunction;
+	}
+
+	public static void AddSizeOf(
+		this IPathInfo z
+		,IPathInfo Other
+	){
+		z.BytesSize += Other.BytesSize;
+		z.BytesSizeOnDisk += Other.BytesSizeOnDisk;
 	}
 }

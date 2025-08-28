@@ -3,7 +3,7 @@ using System.IO;
 
 public static class ToolPath{
 	public static str CombinePath(str Path1, str Path2){
-		if(Path1.EndsWith("/")){
+		if(Path1.EndsWith('/')){
 			return Path1+Path2;
 		}
 		return Path1+"/"+Path2;
@@ -25,6 +25,12 @@ public static class ToolPath{
 		return Directory.EnumerateFileSystemEntries(path)
 				.Select(Path.GetFileName);
 	}
+
+	public static IEnumerable<str?> LsAsy(string path){
+		return Directory.EnumerateFileSystemEntries(path)
+				.Select(Path.GetFileName);
+	}
+
 
 	public static IEnumerable<str> LsFullPath(str Path){
 		var AbsUnixRoot = ToUnixPath(Path, true);
