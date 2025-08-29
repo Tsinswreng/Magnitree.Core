@@ -10,6 +10,14 @@ public class EvtArgScanProgress: EventArgs{
 	public u64 Depth{get;set;}
 }
 
+public class EvtArgIgnorePath: EventArgs{
+	public IPathInfo? PathInfo{get;set;}
+}
+
+public class EvtArgException:EventArgs{
+	public Exception? Exception{get;set;}
+}
+
 public class Scanner{
 	/// <summary>
 	/// ʃ入ʹ參ˋ循環中當前遍歷ʹ節點。緣遍歷旹有回溯、節點蜮褈
@@ -19,22 +27,38 @@ public class Scanner{
 	/// ʃ入ʹ參ˋ已算好大小之節點。節點不褈
 	/// </summary>
 	public event EventHandler<EvtArgScanProgress>? OnScanCompletedNode;
+	public event EventHandler<EvtArgIgnorePath>? OnIgnorePath;
+	public event EventHandler<EvtArgException>? OnException;
+
+	public CfgScanner Cfg{get;set;}
 
 	public Node Tree{get;set;} = new TreeNode<IPathInfo>();
 
+	public IPath StartPath{get;set;}
+	#pragma warning disable CS8618
 	protected Scanner(){}
-	public static async Task<Scanner> MkAsy(str DirPath, CT Ct){
+
+	public static async Task<Scanner> MkAsy(CfgScanner Cfg, CT Ct){
 		var R = new Scanner();
-		R.StartPath = await PathInfo.MkAsy(DirPath, Ct);
+		R.Cfg = Cfg;
+		R.StartPath = await PathInfo.MkAsy(Cfg.RootDir, Ct);
 		if(R.StartPath.Type != EPathType.Dir){
-			throw new ArgumentException($"DirPath:{DirPath} is not a directory."
+			throw new ArgumentException($"DirPath:{Cfg.RootDir} is not a directory."
 			+"Only Normal Directory is supported, links are not supported."
 			);
 		}
 		return R;
 	}
 
-	public IPath StartPath{get;set;}
+	bool TestIgnore(IPathInfo PathInfo){
+		if(!( Cfg.IsIgnored?.Invoke(PathInfo)??false )){
+			return false;
+		}
+		OnIgnorePath?.Invoke(this, new EvtArgIgnorePath{PathInfo = PathInfo});
+		return true;
+	}
+
+
 
 	//Dictionary<Node, TraverseInfo> Node_TraverseInfo = new Dictionary<Node, TraverseInfo>();
 
@@ -83,8 +107,11 @@ public class Scanner{
 			}
 		);
 	}
+	void _OnException(Exception Ex){
+		OnException?.Invoke(this, new EvtArgException{Exception = Ex});
+	}
 
-	//TODO 多綫程並行 //TODO 支持 略ʹ文件 IsIgnored()
+	//TODO 多綫程並行
 	public async Task<nil> Scan(CT Ct){
 		var CurPathInfo = await PathInfo.MkAsy(StartPath.AbsPosixPath, Ct);
 		var CurNode = MkNode(CurPathInfo);
@@ -107,10 +134,13 @@ public class Scanner{
 			}
 		}
 
-		try{
-			for(;;i++){
+		for(;;i++){
+			try{
 				if(Cur == null){
 					break;
+				}
+				if(TestIgnore(Cur.Data)){
+					continue;
 				}
 				//System.Console.WriteLine(Cur.Data.AbsPosixPath);//t
 				CurTraverseInfo = GetTraverseInfo(Cur);
@@ -166,14 +196,10 @@ public class Scanner{
 						continue;
 					}
 				}
-			}//~for(;;)
-		}//~try
-		catch (System.Exception){ //TODO debug
-			System.Console.WriteLine("loop counter:");
-			System.Console.WriteLine(i);
-
-			throw;
-		}
+			}catch (System.Exception e){
+				_OnException(e);
+			}
+		}//~for(;;)
 		return NIL;
 	}
 
