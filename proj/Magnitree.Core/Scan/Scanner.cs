@@ -1,6 +1,7 @@
 namespace Magnitree.Core.Scan;
 using Magnitree.Core.Path;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.IO;
 
 using Node = ScanNode<Magnitree.Core.Path.IPathInfo>;
@@ -68,17 +69,10 @@ public class Scanner{
 
 	//Stack<ITreeNode<IPathInfo>> Stack{get;set;} = new Stack<ITreeNode<IPathInfo>>();
 
-	IDictionary<IPathInfo, Node> CacheOfPathInfo_Node = new Dictionary<IPathInfo, Node>();
+	ConcurrentDictionary<IPathInfo, Node> CacheOfPathInfo_Node = new ConcurrentDictionary<IPathInfo, Node>();
 
 	Node MkNode(IPathInfo PathInfo){
-		if(CacheOfPathInfo_Node.TryGetValue(PathInfo, out var R)){
-			return R;
-		}
-		R = new ScanNode<IPathInfo>(PathInfo);
-		//Node_TraverseInfo[R] = new TraverseInfo();
-		CacheOfPathInfo_Node[PathInfo] = R;
-		//Node_TraverseInfo[PathInfo] = new TraverseInfo();
-		return R;
+		return CacheOfPathInfo_Node.GetOrAdd(PathInfo, p => new ScanNode<IPathInfo>(p));
 	}
 
 	IScanNodeExtraInfo GetTraverseInfo(ITreeNode<IPathInfo> TreeNode){
@@ -128,8 +122,73 @@ public class Scanner{
 		OnException?.Invoke(this, new EvtArgException{Exception = Ex});
 	}
 
-	//TODO 多綫程並行
+	/// <summary>
+	/// 多线程并行扫描目录树
+	/// </summary>
 	public async Task<nil> Scan(CT Ct){
+		var rootPathInfo = await PathInfo.MkAsy(StartPath.AbsPosixPath, Ct);
+		var rootNode = MkNode(rootPathInfo);
+		rootNode.Parent = null;
+		Tree = rootNode;
+		await ScanNodeParallel(rootNode, 0, Ct);
+		return NIL;
+	}
+
+	private async Task ScanNodeParallel(Node node, u64 depth, CT Ct){
+		if (TestIgnore(node.Data)) return;
+		var traverseInfo = GetTraverseInfo(node);
+		traverseInfo.Depth = depth;
+		_OnScanCurrentNode(node, traverseInfo);
+
+		if (node.Data.Type == EPathType.File){
+			UpdParentSizeThreadSafe(node);
+			_OnScanCompletedNode(node, traverseInfo);
+			return;
+		}
+
+		if (node.Data.Type == EPathType.Dir && node.Children.Count == 0){
+			List<string> children;
+			try{
+				children = ToolPath.LsFullPath(node.Data.AbsPosixPath).ToList();
+			}catch(Exception e){
+				_OnException(e);
+				return;
+			}
+			if(children.Count == 0){
+				lock(node){ node.Data.HasBytesSize = true; }
+				_OnScanCompletedNode(node, traverseInfo);
+				UpdParentSizeThreadSafe(node);
+				return;
+			}
+
+			var tasks = new List<Task>();
+			u64 idx = 0;
+			foreach(var file in children){
+				var pathInfo = await PathInfo.MkAsy(file, Ct);
+				var childNode = MkNode(pathInfo);
+				lock(node){ node.AddChild(childNode); }
+				tasks.Add(ScanNodeParallel(childNode, depth + 1, Ct));
+				idx++;
+			}
+			await Task.WhenAll(tasks);
+			lock(node){ node.Data.HasBytesSize = true; }
+			_OnScanCompletedNode(node, traverseInfo);
+			UpdParentSizeThreadSafe(node);
+			return;
+		}
+		// 已遍历过的目录（理论上不会到这里）
+	}
+
+	private void UpdParentSizeThreadSafe(Node node){
+		if(node.Data.HasBytesSize && node.Parent != null){
+			lock(node.Parent){
+				node.Parent.Data.BytesSize += node.Data.BytesSize;
+			}
+		}
+	}
+
+	//TODO 多綫程並行
+	public async Task<nil> ScanOld(CT Ct){
 		var CurPathInfo = await PathInfo.MkAsy(StartPath.AbsPosixPath, Ct);
 		var CurNode = MkNode(CurPathInfo);
 		var Cur = CurNode;
