@@ -42,10 +42,11 @@ public class Scanner{
 		var R = new Scanner();
 		R.Cfg = Cfg;
 		R.StartPath = await PathInfo.MkAsy(Cfg.RootDir, Ct);
-		if(R.StartPath.Type != EPathType.Dir){
-			throw new ArgumentException($"DirPath:{Cfg.RootDir} is not a directory."
-			+"Only Normal Directory is supported, links are not supported."
-			);
+		if(!R.StartPath.IsDir()){
+			throw new ArgumentException($"DirPath:{Cfg.RootDir} is not a directory.");
+			// throw new ArgumentException($"DirPath:{Cfg.RootDir} is not a directory."
+			// +"Only Normal Directory is supported, links are not supported."
+			// );
 		}
 		return R;
 	}
@@ -133,7 +134,7 @@ public class Scanner{
 		var CurNode = MkNode(CurPathInfo);
 		var Cur = CurNode;
 		var i = 0;
-		IScanNodeExtraInfo CurTraverseInfo;
+		IScanNodeExtraInfo CurTraverseInfo = null!;
 
 		void CompleteDir(){
 			Cur.Data.HasBytesSize = true;
@@ -149,6 +150,20 @@ public class Scanner{
 				}
 			}
 		}
+
+		Node? MoveToNextUnvisitedOrCompleteDir(){
+			var UnvisitedChild = GetFirstUnvisitedChild(Cur);
+			CurTraverseInfo.FirstUnvisitedChildIdx++;
+			if(UnvisitedChild == null){//即該文件夾ʹ䀬ʹ孩ˋ皆已遍歷過
+				CompleteDir();
+				return null;
+			}else{
+				Cur = UnvisitedChild;
+				return UnvisitedChild;
+			}
+		}
+
+
 
 		for(;;i++){
 			try{
@@ -202,18 +217,17 @@ public class Scanner{
 					}
 				}else{//當前節點潙已遍歷過之文件夾、即回溯ʃ至
 					//則取下個孩芝未遍歷者
-					var UnvisitedChild = GetFirstUnvisitedChild(Cur);
-					CurTraverseInfo.FirstUnvisitedChildIdx++;
-					if(UnvisitedChild == null){//即該文件夾ʹ䀬ʹ孩ˋ皆已遍歷過
-						CompleteDir();
-						continue;
-					}else{
-						Cur = UnvisitedChild;
-						continue;
-					}
+					MoveToNextUnvisitedOrCompleteDir();
+					continue;
 				}
 			}catch (System.Exception e){
 				_OnException(e);
+				if(Cur == null){break;}
+				if(Cur.Data.Type == EPathType.File){
+					Cur = Cur.Parent as Node; continue;
+				}
+				MoveToNextUnvisitedOrCompleteDir();
+				continue;
 			}
 		}//~for(;;)
 		return NIL;

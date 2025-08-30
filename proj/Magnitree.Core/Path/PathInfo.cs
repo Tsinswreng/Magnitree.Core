@@ -151,7 +151,7 @@ public class PathInfo: IPathInfo{
 
 
 public static class ExtnPath{
-	public static bool IsDir(this IPathInfo z){
+	public static bool IsDir(this IPath z){
 		return z.Type == EPathType.Dir
 		|| z.Type == EPathType.DirSymlink
 		|| z.Type == EPathType.DirJunction;
