@@ -3,7 +3,7 @@ using Magnitree.Core.Path;
 using System.Collections;
 using System.IO;
 
-using Node = ITreeNode<Magnitree.Core.Path.IPathInfo>;
+using Node = ScanNode<Magnitree.Core.Path.IPathInfo>;
 
 public class EvtArgScanProgress: EventArgs{
 	public Node? TreeNode{get;set;}
@@ -32,7 +32,7 @@ public class Scanner{
 
 	public CfgScanner Cfg{get;set;}
 
-	public Node Tree{get;set;} = new TreeNode<IPathInfo>();
+	public Node Tree{get;set;} = new ScanNode<IPathInfo>();
 
 	public IPath StartPath{get;set;}
 	#pragma warning disable CS8618
@@ -62,19 +62,35 @@ public class Scanner{
 
 	//Dictionary<Node, TraverseInfo> Node_TraverseInfo = new Dictionary<Node, TraverseInfo>();
 
-	Dictionary<IPathInfo, TraverseInfo> Node_TraverseInfo = new Dictionary<IPathInfo, TraverseInfo>();
+	// 自建 專門ʹ數據結構、內置TraverseInfo 免查表
+	//Dictionary<IPathInfo, TraverseInfo> Node_TraverseInfo = new Dictionary<IPathInfo, TraverseInfo>();
 
 	//Stack<ITreeNode<IPathInfo>> Stack{get;set;} = new Stack<ITreeNode<IPathInfo>>();
 
+	IDictionary<IPathInfo, Node> CacheOfPathInfo_Node = new Dictionary<IPathInfo, Node>();
+
 	Node MkNode(IPathInfo PathInfo){
-		var R = new TreeNode<IPathInfo>(PathInfo);
+		if(CacheOfPathInfo_Node.TryGetValue(PathInfo, out var R)){
+			return R;
+		}
+		R = new ScanNode<IPathInfo>(PathInfo);
 		//Node_TraverseInfo[R] = new TraverseInfo();
-		Node_TraverseInfo[PathInfo] = new TraverseInfo();
+		CacheOfPathInfo_Node[PathInfo] = R;
+		//Node_TraverseInfo[PathInfo] = new TraverseInfo();
 		return R;
 	}
 
-	TraverseInfo GetTraverseInfo(Node Node){
-		return Node_TraverseInfo[Node.Data];
+	IScanNodeExtraInfo GetTraverseInfo(ITreeNode<IPathInfo> TreeNode){
+		if(TreeNode is Node Node){
+			return Node;
+		}
+		throw new Exception("TreeNode is not a ScanNode.");
+	}
+
+
+	IScanNodeExtraInfo GetTraverseInfo(Node Node){
+		//return Node_TraverseInfo[Node.Data];
+		return Node;
 	}
 
 	public Node? GetFirstUnvisitedChild(Node Node){
@@ -85,10 +101,10 @@ public class Scanner{
 			return null;
 		}
 		var R = Node.Children[ChildIdx];
-		return R;
+		return R as Node; //
 	}
 
-	void _OnScanCompletedNode(Node Node, TraverseInfo CurTraverseInfo){
+	void _OnScanCompletedNode(Node Node, IScanNodeExtraInfo CurTraverseInfo){
 		OnScanCompletedNode?.Invoke(
 			this
 			,new EvtArgScanProgress{
@@ -98,7 +114,7 @@ public class Scanner{
 		);
 	}
 
-	void _OnScanCurrentNode(Node Node, TraverseInfo CurTraverseInfo){
+	void _OnScanCurrentNode(Node Node, IScanNodeExtraInfo CurTraverseInfo){
 		OnScanCurrentNode?.Invoke(
 			this
 			,new EvtArgScanProgress{
@@ -117,13 +133,13 @@ public class Scanner{
 		var CurNode = MkNode(CurPathInfo);
 		var Cur = CurNode;
 		var i = 0;
-		TraverseInfo CurTraverseInfo;
+		IScanNodeExtraInfo CurTraverseInfo;
 
 		void CompleteDir(){
 			Cur.Data.HasBytesSize = true;
 			_OnScanCompletedNode(Cur, CurTraverseInfo);
 			UpdParentSize();
-			Cur = Cur.Parent;
+			Cur = Cur.Parent as Node;
 		}
 
 		void UpdParentSize(){
@@ -156,7 +172,7 @@ public class Scanner{
 				if(Cur.Data.Type == EPathType.File){//當前ʹ節潙葉節(文件)
 					UpdParentSize();
 					_OnScanCompletedNode(Cur, CurTraverseInfo);
-					Cur = Cur.Parent;
+					Cur = Cur.Parent as Node;
 					continue;
 				}
 

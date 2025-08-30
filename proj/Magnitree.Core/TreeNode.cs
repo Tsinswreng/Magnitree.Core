@@ -1,8 +1,10 @@
 namespace Magnitree.Core;
 
-public struct TreeNode<T>: ITreeNode<T>{
+public class TreeNode<T>
+	:ITreeNode<T>
+{
 	public TreeNode(){
-		
+
 	}
 	public TreeNode(T Data){
 		this.Data = Data;
